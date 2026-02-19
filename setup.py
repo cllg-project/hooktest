@@ -43,10 +43,10 @@ setup(
     ],
     install_requires=install_requires,
     tests_require=tests_require,
-    package_data={
-        'hooktest': ['hooktest/resources/*.rng']
-    },
     include_package_data=True,
+    package_data={
+        'hooktest': ['resources/*.rng'],
+    },
     entry_points={
         'console_scripts': [
             'hooktest=hooktest.cli:cli'
