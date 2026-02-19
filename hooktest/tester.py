@@ -3,6 +3,8 @@ import os.path
 import re
 from collections import Counter
 from typing import Dict, List, Optional, Tuple, Union
+
+import tqdm
 from dapytains.processor import get_xpath_proc
 from dapytains.metadata.classes import Collection
 from dapytains.tei.citeStructure import CitableUnit, CitableStructure, CiteStructureParser
@@ -229,9 +231,11 @@ class Tester:
                 )
         return len(self.catalog.objects), len([o for o in self.catalog.objects.values() if o.resource])
 
-    def tests(self):
+    def tests(self, pbar: Optional[tqdm.tqdm] = None) -> Dict[str, bool]:
         resources = [o for o in self.catalog.objects.values() if o.resource]
+        passing: Dict[str, bool] = {}
         for r in resources:
+            passing[r.filepath] = True
             try:
                 doc = Document(r.filepath)
             except Exception as E:
@@ -239,6 +243,7 @@ class Tester:
                     r.filepath,
                     [Log("parse", False, details=f"Exception at parsing time: {E}")]
                 )
+                passing[r.filepath] = False
                 continue
 
             self.results[r.filepath] = Result(
@@ -255,6 +260,7 @@ class Tester:
                     Log("citeStructure/@unit", s, details=f"citeType must be matching the regex ^\\w+$. Problematic names: {', '.join(details)}" if not s else None)
                 )
                 working_tree[tree] = s
+                passing[r.filepath] = s
             reffs = {}
             try:
             # Now check the reference / structure
@@ -277,6 +283,7 @@ class Tester:
                         details="Unable to get reffs from citeStructure"
                     )
                 )
+                passing[r.filepath] = False
             if reffs:
                 bad_refs = {}
                 double_refs = {}
@@ -305,6 +312,8 @@ class Tester:
                                 ])
                         )
                     ))
+                    if not self.results[r.filepath].statuses[-1].status:
+                        passing[r.filepath] = False
 
                     self.results[r.filepath].statuses.append(Log(
                         f"duplicateRefs[Tree={tree}]",
@@ -315,7 +324,10 @@ class Tester:
                                 ])
                         )
                     ))
-
-        return [r.filepath for r in resources]
+                    if not self.results[r.filepath].statuses[-1].status:
+                        passing[r.filepath] = False
+            if pbar:
+                pbar.update(1)
+        return passing
 
 

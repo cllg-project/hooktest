@@ -133,8 +133,10 @@ def cli(files, include_metadata_report: bool, verbosity: str, catalog: bool):
     #
     printer.header("Report: TEI files")
     table = [["File", "Status", "Tests"]]
-    for test in tester.tests():
+    global_status = []
+    for test, status in tester.tests() .items():
         result = tester.results[test]
+        global_status.append(status)
         printer.filter_append(
             haystack=table,
             hay=[
@@ -145,6 +147,11 @@ def cli(files, include_metadata_report: bool, verbosity: str, catalog: bool):
             level="minimal"
         )
     click.echo(tabulate.tabulate(table, tablefmt="grid"))
+    if False not in global_status:
+        click.echo("All tests passed")
+    else:
+        click.echo(f"{global_status.count(False)/len(global_status)*100:.2f}% of the files "
+                   f"failed (Abs: {global_status.count(False)}/{len(files)})")
     return tester
 
 if __name__ == "__main__":
