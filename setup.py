@@ -24,11 +24,11 @@ with open(path.join(here, 'requirements.txt'), encoding='utf-8') as f:
             install_requires.append(line.strip())
 
 setup(
-    name='HookTest',
+    name='hooktest',
     version="2.0.0",
     description='Library for testing CiteStructure data, using Dapitains library',
     long_description=long_description,
-    url='http://github.com/cllg/HookTest',
+    url='http://github.com/cllg/hooktest',
     author='Thibault Clérice',
     author_email='leponteineptique@gmail.com',
     license='Mozilla Public License Version 2.0',
@@ -44,7 +44,7 @@ setup(
     install_requires=install_requires,
     tests_require=tests_require,
     package_data={
-        'HookTest': ['hooktest/resources/*.rng']
+        'hooktest': ['hooktest/resources/*.rng']
     },
     include_package_data=True,
     entry_points={
