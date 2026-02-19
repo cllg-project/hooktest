@@ -249,11 +249,13 @@ class Tester:
                     Log("parse(refsDecl/@n)", True, details=f"Tree(s) found: {len(doc.citeStructure)}")
                 ]
             )
+            working_tree = {}
             for tree in doc.citeStructure:
                 s, details = check_naming_type(doc.citeStructure[tree].structure)
                 self.results[r.filepath].statuses.append(
                     Log("citeStructure/@unit", s, details=f"citeType must be matching the regex ^\\w+$. Problematic names: {', '.join(details)}" if not s else None)
                 )
+                working_tree[tree] = s
             reffs = {}
             try:
             # Now check the reference / structure
@@ -280,6 +282,8 @@ class Tester:
                 bad_refs = {}
                 double_refs = {}
                 for tree in reffs:
+                    if not working_tree[tree]:
+                        continue
                     bad_refs[tree] = {}
                     double_refs[tree] = {}
                     for xpath, *values in _check_refs(doc, doc.citeStructure[tree].structure):
