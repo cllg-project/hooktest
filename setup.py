@@ -49,7 +49,7 @@ setup(
     include_package_data=True,
     entry_points={
         'console_scripts': [
-            'hooktest=HookTest.cli'
+            'hooktest=HookTest.cli:cli'
         ]
     },
     test_suite="tests",
