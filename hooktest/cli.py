@@ -1,9 +1,11 @@
 import os.path
+import sys
 from typing import List
 import click
 import tabulate
 import textwrap
 from .tester import Tester, Log
+from tqdm import tqdm
 
 def to_small_caps(text):
     small_caps_map = str.maketrans(
@@ -79,9 +81,10 @@ class CustomLogger:
 @click.argument("files", nargs=-1, type=click.Path(file_okay=True, dir_okay=False, exists=True))
 @click.option("-m", "--include-metadata-report", is_flag=True, default=False)
 @click.option("-v", "--verbosity", default="minimal", type=click.Choice(["minimal", "details", "verbose"]))
+@click.option("-p", "--progress", default=False, is_flag=True, help="Enable progress bar")
 @click.option("--catalog/--no-catalog", default=True, is_flag=True,
               help="Use --no-catalog when you only one to test single files")
-def cli(files, include_metadata_report: bool, verbosity: str, catalog: bool):
+def cli(files, include_metadata_report: bool, verbosity: str, catalog: bool, progress: bool):
     tester = Tester()
     printer = CustomLogger(verbosity)
     if catalog:
@@ -134,7 +137,7 @@ def cli(files, include_metadata_report: bool, verbosity: str, catalog: bool):
     printer.header("Report: TEI files")
     table = [["File", "Status", "Tests"]]
     global_status = []
-    for test, status in tester.tests() .items():
+    for test, status in tester.tests(pbar=tqdm() if progress else None) .items():
         result = tester.results[test]
         global_status.append(status)
         printer.filter_append(
@@ -152,6 +155,7 @@ def cli(files, include_metadata_report: bool, verbosity: str, catalog: bool):
     else:
         click.echo(f"{global_status.count(False)/len(global_status)*100:.2f}% of the files "
                    f"failed (Abs: {global_status.count(False)}/{len(files)})")
+        sys.exit(1)
     return tester
 
 if __name__ == "__main__":

@@ -326,7 +326,7 @@ class Tester:
                     ))
                     if not self.results[r.filepath].statuses[-1].status:
                         passing[r.filepath] = False
-            if pbar:
+            if pbar is not None:
                 pbar.update(1)
         return passing
 
