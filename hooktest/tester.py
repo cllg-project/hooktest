@@ -140,7 +140,6 @@ def _check_dbl_refs(
     counter = Counter(struct_flatten(document.get_reffs(tree)))
     for ((reference, xpath), match_count) in counter.items():
         if match_count > 1:
-            print(xpath)
             count = len(list(xpath_eval(document.xpath_processor, xpath)))
             if count > 1:
                 returns.append((xpath, f"`{reference}`", count))
