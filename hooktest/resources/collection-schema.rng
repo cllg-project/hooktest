@@ -17,7 +17,7 @@
                 <data type="anyURI"/>
             </attribute>
             <optional>
-                <attribute name="path">
+                <attribute name="filepath">
                     <a:documentation>Path to the relevant Collection or Resource</a:documentation>
                     <data type="anyURI"/>
                 </attribute>
@@ -176,6 +176,9 @@
         </optional>
         <optional>
             <ref name="members"/>
+        </optional>
+        <optional>
+            <ref name="parent"/>
         </optional>
     </define>
     <define name="resource">
