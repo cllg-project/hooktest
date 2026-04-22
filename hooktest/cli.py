@@ -81,10 +81,11 @@ class CustomLogger:
 @click.argument("files", nargs=-1, type=click.Path(file_okay=True, dir_okay=False, exists=True))
 @click.option("-m", "--include-metadata-report", is_flag=True, default=False)
 @click.option("-v", "--verbosity", default="minimal", type=click.Choice(["minimal", "details", "verbose"]))
+@click.option("-f", "--failures-only", default=False, is_flag=True, help="Show failures only")
 @click.option("-p", "--progress", default=False, is_flag=True, help="Enable progress bar")
 @click.option("--catalog/--no-catalog", default=True, is_flag=True,
               help="Use --no-catalog when you only one to test single files")
-def cli(files, include_metadata_report: bool, verbosity: str, catalog: bool, progress: bool):
+def cli(files, include_metadata_report: bool, verbosity: str, catalog: bool, progress: bool, failures_only: bool):
     tester = Tester()
     printer = CustomLogger(verbosity)
     if catalog:
@@ -138,23 +139,24 @@ def cli(files, include_metadata_report: bool, verbosity: str, catalog: bool, pro
     table = [["File", "Status", "Tests"]]
     global_status = []
     for test, status in tester.tests(pbar=tqdm() if progress else None) .items():
-        result = tester.results[test]
         global_status.append(status)
-        printer.filter_append(
-            haystack=table,
-            hay=[
-                os.path.relpath(test),
-                printer.checkmark(result.status),
-                "\n".join(printer.filter_logs(result.statuses))
-            ],
-            level="minimal"
-        )
+        if (failures_only and status is False) or failures_only is False:
+            result = tester.results[test]
+            printer.filter_append(
+                haystack=table,
+                hay=[
+                    os.path.relpath(test),
+                    printer.checkmark(result.status),
+                    "\n".join(printer.filter_logs(result.statuses))
+                ],
+                level="minimal"
+            )
     click.echo(tabulate.tabulate(table, tablefmt="grid"))
     if False not in global_status:
         click.echo("All tests passed")
     else:
         click.echo(f"{global_status.count(False)/len(global_status)*100:.2f}% of the files "
-                   f"failed (Abs: {global_status.count(False)}/{len(files)})")
+                   f"failed (Abs: {global_status.count(False)}/{len(global_status)})")
         sys.exit(1)
     return tester
 
