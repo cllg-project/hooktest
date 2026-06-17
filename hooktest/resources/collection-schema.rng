@@ -151,14 +151,6 @@
                      <choice>
                          <ref name="collection"/>
                          <ref name="resource"/>
-                         <element>
-                             <a:documentation>Relative link to a secondary collection file</a:documentation>
-                             <choice>
-                                 <name>collection</name>
-                                 <name>resource</name>
-                             </choice>
-                             <ref name="identifier-and-path"/>
-                         </element>
                      </choice>
                  </oneOrMore>
              </interleave>
@@ -167,7 +159,9 @@
     <define name="collection-pattern">
         <ref name="identifier-and-path"/>
         <ref name="parent"/>
-        <ref name="baseDetails"/>
+        <optional>
+            <ref name="baseDetails"/>
+        </optional>
         <optional>
             <ref name="dublinCore"/>
         </optional>

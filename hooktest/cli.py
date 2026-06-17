@@ -85,7 +85,9 @@ class CustomLogger:
 @click.option("-p", "--progress", default=False, is_flag=True, help="Enable progress bar")
 @click.option("--catalog/--no-catalog", default=True, is_flag=True,
               help="Use --no-catalog when you only one to test single files")
-def cli(files, include_metadata_report: bool, verbosity: str, catalog: bool, progress: bool, failures_only: bool):
+@click.option("-o", "--manifest", default=None, type=click.Path(dir_okay=False),
+              help="Write a manifest of files that passed all tests to this path")
+def cli(files, include_metadata_report: bool, verbosity: str, catalog: bool, progress: bool, failures_only: bool, manifest: str):
     tester = Tester()
     printer = CustomLogger(verbosity)
     if catalog:
@@ -152,6 +154,17 @@ def cli(files, include_metadata_report: bool, verbosity: str, catalog: bool, pro
                 level="minimal"
             )
     click.echo(tabulate.tabulate(table, tablefmt="grid"))
+
+    if manifest:
+        passing_files = [
+            os.path.relpath(file)
+            for file, result in tester.results.items()
+            if result.status
+        ]
+        with open(manifest, "w") as f:
+            f.write("\n".join(passing_files))
+        printer.info(f"Wrote {len(passing_files)} passing file(s) to manifest {manifest}")
+
     if False not in global_status:
         click.echo("All tests passed")
     else:

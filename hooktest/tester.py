@@ -164,12 +164,15 @@ class Tester:
         )
 
     def run_catalog_schema(self, filepath) -> Log:
-        status = self.catalog_schema.validate(ET.parse(filepath))
-        details = []
-        if not status:
-            for el in self.catalog_schema.error_log:
-                details.append(":".join(str(el).split("\n")[0].split(":")[6:]).strip())
-        return Log("schema", status, details="; ".join(details))
+        try:
+            status = self.catalog_schema.validate(ET.parse(filepath))
+            details = []
+            if not status:
+                for el in self.catalog_schema.error_log:
+                    details.append(":".join(str(el).split("\n")[0].split(":")[6:]).strip())
+            return Log("schema", status, details="; ".join(details))
+        except Exception as E:
+            return Log("schema", False, details=f"Exception at schema validation time: {E}")
 
     def ingest_tei_only(self, files: List[str]) -> int:
         """ Ingest TEI Files as resources (does not require catalogs)
@@ -253,79 +256,85 @@ class Tester:
                     Log("parse(refsDecl/@n)", True, details=f"Tree(s) found: {len(doc.citeStructure)}")
                 ]
             )
-            working_tree = {}
-            for tree in doc.citeStructure:
-                s, details = check_naming_type(doc.citeStructure[tree].structure)
-                self.results[r.filepath].statuses.append(
-                    Log("citeStructure/@unit", s, details=f"citeType must be matching the regex ^\\w+$. Problematic names: {', '.join(details)}" if not s else None)
-                )
-                working_tree[tree] = s
-                passing[r.filepath] = s
-            reffs = {}
             try:
-            # Now check the reference / structure
-                reffs = {tree: doc.get_reffs(tree) for tree in doc.citeStructure}
-                self.results[r.filepath].statuses.append(
-                    Log(
-                        "parse(citeStructures)",
-                        True,
-                        details="\n".join([
-                            f"Tree:{tree}->{_stringify_tree_count(_count_tree(reffs[tree]))}"
-                            for tree in reffs
-                        ])
+                working_tree = {}
+                for tree in doc.citeStructure:
+                    s, details = check_naming_type(doc.citeStructure[tree].structure)
+                    self.results[r.filepath].statuses.append(
+                        Log("citeStructure/@unit", s, details=f"citeType must be matching the regex ^\\w+$. Problematic names: {', '.join(details)}" if not s else None)
                     )
-                )
-            except:
-                self.results[r.filepath].statuses.append(
-                    Log(
-                        "citeStructures",
-                        False,
-                        details="Unable to get reffs from citeStructure"
+                    working_tree[tree] = s
+                    passing[r.filepath] = s
+                reffs = {}
+                try:
+                # Now check the reference / structure
+                    reffs = {tree: doc.get_reffs(tree) for tree in doc.citeStructure}
+                    self.results[r.filepath].statuses.append(
+                        Log(
+                            "parse(citeStructures)",
+                            True,
+                            details="\n".join([
+                                f"Tree:{tree}->{_stringify_tree_count(_count_tree(reffs[tree]))}"
+                                for tree in reffs
+                            ])
+                        )
                     )
+                except Exception:
+                    self.results[r.filepath].statuses.append(
+                        Log(
+                            "citeStructures",
+                            False,
+                            details="Unable to get reffs from citeStructure"
+                        )
+                    )
+                    passing[r.filepath] = False
+                if reffs:
+                    bad_refs = {}
+                    double_refs = {}
+                    for tree in reffs:
+                        if not working_tree[tree]:
+                            continue
+                        bad_refs[tree] = {}
+                        double_refs[tree] = {}
+                        for xpath, *values in _check_refs(doc, doc.citeStructure[tree].structure):
+                            if xpath not in bad_refs:
+                                bad_refs[tree][xpath] = []
+                            bad_refs[tree][xpath].append(values)
+
+                        for xpath, value, count in _check_dbl_refs(doc, tree):
+                            double_refs[tree][xpath] = (value, count)
+
+                        self.results[r.filepath].statuses.append(Log(
+                            f"forbiddenRefs[Tree={tree}]",
+                            len(bad_refs[tree]) == 0,
+                            details="" if len(bad_refs[tree]) == 0 else (
+                                    "Reference(s) contain[s] a delimiter, which will break parsing: " + "; ".join([
+                                        f"At xpath `{xpath}`: " + ", ".join([
+                                            f"`{ref}` (Delim: `{delim}`)"
+                                            for ref, delim in bad_refs[tree][xpath]
+                                        ]) for xpath in bad_refs[tree]
+                                    ])
+                            )
+                        ))
+                        if not self.results[r.filepath].statuses[-1].status:
+                            passing[r.filepath] = False
+
+                        self.results[r.filepath].statuses.append(Log(
+                            f"duplicateRefs[Tree={tree}]",
+                            len(double_refs[tree]) == 0,
+                            details="" if len(double_refs[tree]) == 0 else (
+                                    "Reference(s) at following XPath(s) are found more than once: " + "; ".join([
+                                        f"Reference {ref} (×{count}, xPath: `{xpath}`): " for xpath, (ref, count) in double_refs[tree].items()
+                                    ])
+                            )
+                        ))
+                        if not self.results[r.filepath].statuses[-1].status:
+                            passing[r.filepath] = False
+            except Exception as E:
+                self.results[r.filepath].statuses.append(
+                    Log("error", False, details=f"Unexpected exception while testing resource: {E}")
                 )
                 passing[r.filepath] = False
-            if reffs:
-                bad_refs = {}
-                double_refs = {}
-                for tree in reffs:
-                    if not working_tree[tree]:
-                        continue
-                    bad_refs[tree] = {}
-                    double_refs[tree] = {}
-                    for xpath, *values in _check_refs(doc, doc.citeStructure[tree].structure):
-                        if xpath not in bad_refs:
-                            bad_refs[tree][xpath] = []
-                        bad_refs[tree][xpath].append(values)
-
-                    for xpath, value, count in _check_dbl_refs(doc, tree):
-                        double_refs[tree][xpath] = (value, count)
-
-                    self.results[r.filepath].statuses.append(Log(
-                        f"forbiddenRefs[Tree={tree}]",
-                        len(bad_refs[tree]) == 0,
-                        details="" if len(bad_refs[tree]) == 0 else (
-                                "Reference(s) contain[s] a delimiter, which will break parsing: " + "; ".join([
-                                    f"At xpath `{xpath}`: " + ", ".join([
-                                        f"`{ref}` (Delim: `{delim}`)"
-                                        for ref, delim in bad_refs[tree][xpath]
-                                    ]) for xpath in bad_refs[tree]
-                                ])
-                        )
-                    ))
-                    if not self.results[r.filepath].statuses[-1].status:
-                        passing[r.filepath] = False
-
-                    self.results[r.filepath].statuses.append(Log(
-                        f"duplicateRefs[Tree={tree}]",
-                        len(double_refs[tree]) == 0,
-                        details="" if len(double_refs[tree]) == 0 else (
-                                "Reference(s) at following XPath(s) are found more than once: " + "; ".join([
-                                    f"Reference {ref} (×{count}, xPath: `{xpath}`): " for xpath, (ref, count) in double_refs[tree].items()
-                                ])
-                        )
-                    ))
-                    if not self.results[r.filepath].statuses[-1].status:
-                        passing[r.filepath] = False
             if pbar is not None:
                 pbar.update(1)
         return passing
