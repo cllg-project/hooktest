@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<collection identifier="https://example.org/root">
+    <title>Root collection</title>
+    <members>
+        <collection identifier="https://example.org/child" filepath="child.xml"/>
+    </members>
+</collection>

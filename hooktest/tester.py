@@ -94,6 +94,36 @@ def check_naming_type(struct: CitableStructure) -> Tuple[bool, List[str]]:
     else:
         return False not in [a for a,b in children], [t for a, b in children for t in b]
 
+def check_citestructure_delims(filepath: str) -> Log:
+    """ dapytains requires every citeStructure nested within another citeStructure
+    to carry a @delim attribute (the top-level citeStructure(s) of a refsDecl do not,
+    since there is no parent reference to prepend a delimiter to). A missing @delim
+    on a non-top citeStructure crashes dapytains' regex building with a cryptic
+    TypeError, so we check for it upfront with a clear message.
+    """
+    try:
+        tree = ET.parse(filepath)
+    except Exception as E:
+        return Log("citeStructure/@delim", False, details=f"Unable to parse file to check delimiters: {E}")
+
+    missing = []
+    for el in tree.iter():
+        if ET.QName(el).localname != "citeStructure":
+            continue
+        parent = el.getparent()
+        if parent is not None and ET.QName(parent).localname == "citeStructure" and not el.get("delim"):
+            missing.append(el.get("unit") or "?")
+
+    status = len(missing) == 0
+    return Log(
+        "citeStructure/@delim",
+        status,
+        details=(
+            "Non-top citeStructure(s) are missing the required @delim attribute "
+            f"(unit(s): {', '.join(missing)})"
+        ) if not status else None
+    )
+
 def _get_delim(s: CitableStructure) -> List[str]:
     return ([s.delim] if s.delim else []) + [d for c in s.children for d in _get_delim(c)]
 
@@ -239,23 +269,24 @@ class Tester:
         passing: Dict[str, bool] = {}
         for r in resources:
             passing[r.filepath] = True
+            delim_log = check_citestructure_delims(r.filepath)
+            self.results[r.filepath] = Result(r.filepath, [delim_log])
+            if not delim_log.status:
+                passing[r.filepath] = False
+
             try:
                 doc = Document(r.filepath)
             except Exception as E:
-                self.results[r.filepath] = Result(
-                    r.filepath,
-                    [Log("parse", False, details=f"Exception at parsing time: {E}")]
+                self.results[r.filepath].statuses.append(
+                    Log("parse", False, details=f"Exception at parsing time: {E}")
                 )
                 passing[r.filepath] = False
                 continue
 
-            self.results[r.filepath] = Result(
-                r.filepath,
-                [
-                    Log("parse", True),
-                    Log("parse(refsDecl/@n)", True, details=f"Tree(s) found: {len(doc.citeStructure)}")
-                ]
-            )
+            self.results[r.filepath].statuses.extend([
+                Log("parse", True),
+                Log("parse(refsDecl/@n)", True, details=f"Tree(s) found: {len(doc.citeStructure)}")
+            ])
             try:
                 working_tree = {}
                 for tree in doc.citeStructure:
