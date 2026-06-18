@@ -104,7 +104,10 @@ def check_citestructure_delims(filepath: str) -> Log:
     try:
         tree = ET.parse(filepath)
     except Exception as E:
-        return Log("citeStructure/@delim", False, details=f"Unable to parse file to check delimiters: {E}")
+        return Log(
+            "citeStructure/@delim", False,
+            details=f"Unable to parse XML to check citeStructure/@delim attributes ({type(E).__name__}: {E})"
+        )
 
     missing = []
     for el in tree.iter():
@@ -182,7 +185,7 @@ def _check_dbl_refs(
 class Tester:
     """ Tester class, allows for retrieving results outside of the CLI
     """
-    def __init__(self):
+    def __init__(self, resource_schema: Optional[str] = None):
         self.catalog = Catalog()
         self.results: Dict[str, Result] = {}
 
@@ -193,16 +196,27 @@ class Tester:
             )
         )
 
-    def run_catalog_schema(self, filepath) -> Log:
+        # Optional user-supplied schema to validate TEI resource files against
+        self.resource_schema: Optional[ET.RelaxNG] = (
+            ET.RelaxNG(ET.parse(resource_schema)) if resource_schema else None
+        )
+
+    def _validate_against_schema(self, schema: ET.RelaxNG, filepath: str) -> Log:
         try:
-            status = self.catalog_schema.validate(ET.parse(filepath))
+            status = schema.validate(ET.parse(filepath))
             details = []
             if not status:
-                for el in self.catalog_schema.error_log:
+                for el in schema.error_log:
                     details.append(":".join(str(el).split("\n")[0].split(":")[6:]).strip())
             return Log("schema", status, details="; ".join(details))
         except Exception as E:
-            return Log("schema", False, details=f"Exception at schema validation time: {E}")
+            return Log(
+                "schema", False,
+                details=f"Unable to validate against schema ({type(E).__name__}: {E}); check the file is well-formed XML"
+            )
+
+    def run_catalog_schema(self, filepath) -> Log:
+        return self._validate_against_schema(self.catalog_schema, filepath)
 
     def ingest_tei_only(self, files: List[str]) -> int:
         """ Ingest TEI Files as resources (does not require catalogs)
@@ -234,7 +248,13 @@ class Tester:
                 before = len(self.catalog.relationships)
                 _, collection = parse(file, self.catalog)
             except Exception as E:
-                self.results[file] = Result(file, [Log("parse", False, details=str(E))])
+                self.results[file] = Result(
+                    file, [Log(
+                        "parse", False,
+                        details=f"Unable to parse catalog file ({type(E).__name__}: {E}); "
+                                f"check it is well-formed XML following the Dapytains catalog structure"
+                    )]
+                )
                 continue
             self.results[file] = Result(
                 file, [
@@ -274,11 +294,22 @@ class Tester:
             if not delim_log.status:
                 passing[r.filepath] = False
 
+            if self.resource_schema is not None:
+                schema_log = self._validate_against_schema(self.resource_schema, r.filepath)
+                self.results[r.filepath].statuses.append(schema_log)
+                if not schema_log.status:
+                    passing[r.filepath] = False
+
             try:
                 doc = Document(r.filepath)
             except Exception as E:
                 self.results[r.filepath].statuses.append(
-                    Log("parse", False, details=f"Exception at parsing time: {E}")
+                    Log(
+                        "parse", False,
+                        details=f"Unable to build a document/citeStructure model from this file "
+                                f"({type(E).__name__}: {E}); check the TEI is well-formed XML with a "
+                                f"valid refsDecl/citeStructure"
+                    )
                 )
                 passing[r.filepath] = False
                 continue
@@ -295,7 +326,7 @@ class Tester:
                         Log("citeStructure/@unit", s, details=f"citeType must be matching the regex ^\\w+$. Problematic names: {', '.join(details)}" if not s else None)
                     )
                     working_tree[tree] = s
-                    passing[r.filepath] = s
+                    passing[r.filepath] = passing[r.filepath] and s
                 reffs = {}
                 try:
                 # Now check the reference / structure
@@ -363,7 +394,11 @@ class Tester:
                             passing[r.filepath] = False
             except Exception as E:
                 self.results[r.filepath].statuses.append(
-                    Log("error", False, details=f"Unexpected exception while testing resource: {E}")
+                    Log(
+                        "error", False,
+                        details=f"Unexpected error while checking citeStructure references "
+                                f"({type(E).__name__}: {E})"
+                    )
                 )
                 passing[r.filepath] = False
             if pbar is not None:

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<grammar
+    xmlns="http://relaxng.org/ns/structure/1.0"
+    xmlns:tei="http://www.tei-c.org/ns/1.0"
+    xmlns:xml="http://www.w3.org/XML/1998/namespace"
+    datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">
+    <start>
+        <element name="tei:TEI">
+            <attribute name="xml:lang"/>
+            <ref name="anyAttributesOrContent"/>
+        </element>
+    </start>
+    <define name="anyAttributesOrContent">
+        <zeroOrMore>
+            <choice>
+                <attribute>
+                    <anyName>
+                        <except>
+                            <name>xml:lang</name>
+                        </except>
+                    </anyName>
+                </attribute>
+                <ref name="anyElement"/>
+                <text/>
+            </choice>
+        </zeroOrMore>
+    </define>
+    <define name="anyElement">
+        <element>
+            <anyName/>
+            <ref name="anyAttributesOrContent"/>
+        </element>
+    </define>
+</grammar>

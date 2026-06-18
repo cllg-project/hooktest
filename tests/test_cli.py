@@ -113,6 +113,32 @@ def test_manifest_lists_only_passing_files(runner, tmp_path):
     assert get_path("forbid.xml") not in manifest_lines, "Failing file is not listed in the manifest"
 
 
+def test_resource_schema_option_passes_for_conformant_file(runner):
+    """-s/--schema should validate each TEI resource file against the given RelaxNG
+    schema and report a passing 'schema' test when the file conforms."""
+    result = runner.invoke(
+        cli,
+        ['--no-catalog', '-v', 'verbose', '-s', get_path("resource-schema.rng"), get_path("schema_valid.xml")],
+        standalone_mode=False,
+    )
+    assert "schema: ✔" in result.output, "Conformant file passes the schema check"
+    assert count_failing(result.return_value.results[get_path("schema_valid.xml")]) == 0, "Zero failing test"
+
+
+def test_resource_schema_option_fails_for_non_conformant_file(runner):
+    """-s/--schema must report a failing 'schema' test when a TEI resource file
+    does not conform to the given RelaxNG schema."""
+    result = runner.invoke(
+        cli,
+        ['--no-catalog', '-s', get_path("resource-schema.rng"), get_path("correct_simple.xml")],
+        standalone_mode=False,
+    )
+    assert '✗' in result.output, "File has a failing test"
+    assert 'schema' in result.output, "Schema test is reported"
+    assert isinstance(result.exception, SystemExit), "Failure must end the run gracefully, not crash"
+    assert result.exit_code == 1
+
+
 def test_catalog_schema_accepts_link_stub_member():
     """Regression test: a <collection>/<resource> member that only links to another
     catalog file via @filepath (no inline <title>) must validate against the schema,

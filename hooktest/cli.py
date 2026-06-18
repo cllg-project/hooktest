@@ -87,8 +87,10 @@ class CustomLogger:
               help="Use --no-catalog when you only one to test single files")
 @click.option("-o", "--manifest", default=None, type=click.Path(dir_okay=False),
               help="Write a manifest of files that passed all tests to this path")
-def cli(files, include_metadata_report: bool, verbosity: str, catalog: bool, progress: bool, failures_only: bool, manifest: str):
-    tester = Tester()
+@click.option("-s", "--schema", default=None, type=click.Path(exists=True, dir_okay=False),
+              help="Validate each TEI resource file against this RelaxNG (.rng) schema")
+def cli(files, include_metadata_report: bool, verbosity: str, catalog: bool, progress: bool, failures_only: bool, manifest: str, schema: str):
+    tester = Tester(resource_schema=schema)
     printer = CustomLogger(verbosity)
     if catalog:
         count_collections, count_resources = tester.ingest(files)
