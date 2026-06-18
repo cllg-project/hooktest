@@ -48,7 +48,11 @@ def test_duplicate_refs(runner):
     assert "`1.2`" in result.output, "Level 2 reference `1.2` is duplicated within the first 1"
     assert "`1.3`" in result.output, "Level 2 reference `1.3` is duplicated across both 1"
     assert "`1.1`" not in result.output, "Level 2 reference `1.1` is not duplicated across both 1"
-    assert count_failing(result.return_value.results[get_path("duplicate.xml")]) == 1, "Only one failing test"
+
+    tester = Tester()
+    tester.ingest_tei_only([get_path("duplicate.xml")])
+    tester.tests()
+    assert count_failing(tester.results[get_path("duplicate.xml")]) == 1, "Only one failing test"
 
 
 def test_forbidden_ref(runner):
@@ -56,7 +60,11 @@ def test_forbidden_ref(runner):
     result = runner.invoke(cli, ['--no-catalog', get_path("forbid.xml")], standalone_mode=False)
     assert '✗' in result.output, "File has a failing test"
     assert 'forbiddenRefs[Tree=default]' in result.output, "Tree Default has forbidden references"
-    assert count_failing(result.return_value.results[get_path("forbid.xml")]) == 1, "Only one failing test"
+
+    tester = Tester()
+    tester.ingest_tei_only([get_path("forbid.xml")])
+    tester.tests()
+    assert count_failing(tester.results[get_path("forbid.xml")]) == 1, "Only one failing test"
 
 
 def test_missing_delim_on_non_top_citestructure_is_reported(runner):
