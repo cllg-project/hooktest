@@ -11,18 +11,25 @@
     </start>
 
     <define name="identifier-and-path">
-        <group>
-            <attribute name="identifier">
-                <a:documentation>Identifier of the Collection or Resource</a:documentation>
-                <data type="anyURI"/>
-            </attribute>
-            <optional>
-                <attribute name="filepath">
-                    <a:documentation>Path to the relevant Collection or Resource</a:documentation>
+        <choice>
+            <group>
+                <attribute name="identifier">
+                    <a:documentation>Identifier of the Collection or Resource</a:documentation>
                     <data type="anyURI"/>
                 </attribute>
-            </optional>
-        </group>
+                <optional>
+                    <attribute name="filepath">
+                        <a:documentation>Path to the relevant Collection or Resource</a:documentation>
+                        <data type="anyURI"/>
+                    </attribute>
+                </optional>
+            </group>
+            <!-- Link stub: the identifier lives in the linked catalog file -->
+            <attribute name="filepath">
+                <a:documentation>Path to the relevant Collection or Resource</a:documentation>
+                <data type="anyURI"/>
+            </attribute>
+        </choice>
     </define>
     <define name="parent">
         <optional>
