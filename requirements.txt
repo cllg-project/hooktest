@@ -1,4 +1,4 @@
-dapytains>=1.0.0rc1
+dapytains>=1.0.0rc3
 click>=8.1.8,<9.0.0
 colorama~=0.4.6
 tabulate~=0.9.0
