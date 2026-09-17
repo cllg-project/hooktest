@@ -146,3 +146,29 @@ def test_catalog_schema_accepts_link_stub_member():
     tester = Tester()
     log = tester.run_catalog_schema(get_path("catalog_with_stub.xml"))
     assert log.status is True, log.details
+
+
+def test_empty_ref_value_is_reported(runner):
+    """An element matched by a citeStructure but carrying an empty @use value (a
+    `<div n="">` left behind by a conversion, say) yields an empty reference, which
+    dapytains can neither cite nor resolve; it must be reported against the offending
+    element instead of surfacing as "Reference '' does not match the expected format"."""
+    result = runner.invoke(cli, ['--no-catalog', get_path("empty_ref_value.xml")], standalone_mode=False)
+    assert '✗' in result.output, "File has a failing test"
+    assert 'emptyRefs[Tree=default]' in result.output, "Empty value is reported under its own test name"
+    assert isinstance(result.exception, SystemExit), "Failure must end the run gracefully, not crash"
+    assert result.exit_code == 1
+
+    tester = Tester()
+    tester.ingest_tei_only([get_path("empty_ref_value.xml")])
+    tester.tests()
+    assert count_failing(tester.results[get_path("empty_ref_value.xml")]) == 1, "Only one failing test"
+    details = [
+        s.details for s in tester.results[get_path("empty_ref_value.xml")].statuses
+        if s.name == "emptyRefs[Tree=default]"
+    ][0]
+    assert "chapter at `/TEI[1]/text[1]/body[1]/div[2]`" in details, "The offending element is named"
+    assert "section at `/TEI[1]/text[1]/body[1]/div[3]/p[1]/milestone[1]`" in details, \
+        "A nested empty value is found even under an element that is itself not cited"
+    assert "chapter at `/TEI[1]/text[1]/body[1]/div[3]`" not in details, \
+        "An absent attribute is legitimate encoding (that element is simply not cited)"
