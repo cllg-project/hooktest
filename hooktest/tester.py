@@ -110,9 +110,9 @@ def check_citestructure_delims(filepath: str) -> Log:
         )
 
     missing = []
-    for el in tree.iter():
-        if ET.QName(el).localname != "citeStructure":
-            continue
+    # iter() on a tag pattern skips comments and processing instructions, which have no
+    # QName and used to crash this check.
+    for el in tree.iter("{*}citeStructure"):
         parent = el.getparent()
         if parent is not None and ET.QName(parent).localname == "citeStructure" and not el.get("delim"):
             missing.append(el.get("unit") or "?")
@@ -155,6 +155,80 @@ def _check_refs(
 
     for child in structure.children:
         returns.extend(_check_refs(document, child, previous_delim, xpath_match))
+
+    return returns
+
+
+def _join_xpath(base: str, xpath: str) -> str:
+    """ Join a parent match with a child match. A child match can be written ".//x" or "//x",
+    both of which must end up as a single descendant step. """
+    if not base:
+        return xpath
+    return f"{base}/{xpath}".replace("///", "//")
+
+
+def _absolute_path(document: Document, node) -> str:
+    """ Positional XPath of a concrete node (e.g. /TEI[1]/text[1]/body[1]/div[8]), so a report
+    points at one element rather than at the whole match. """
+    return str(get_xpath_proc(node, processor=document.xml_processor).evaluate_single(
+        "string-join(for $n in (ancestor-or-self::*) "
+        "return concat('/', name($n), '[', 1 + count($n/preceding-sibling::*[name() = name($n)]), ']'), '')"
+    ))
+
+
+def _bare_match(structure: CitableStructure) -> str:
+    """ The element match of a citeStructure, without the `[@n]`-style predicate dapytains
+    appends to it: that predicate hides the very elements we want to report, the ones missing
+    their @use attribute altogether. """
+    match = getattr(structure, "match", "")
+    if match:
+        return match
+    suffix = f"[{structure.use}]"
+    if structure.xpath_match.endswith(suffix):
+        return structure.xpath_match[:-len(suffix)]
+    return structure.xpath_match
+
+
+def _check_empty_values(
+        document: Document,
+        structure: CitableStructure,
+        base_xpath: str = ""
+) -> List[Tuple[str, str, str]]:
+    """ Find matched nodes carrying an empty citeStructure/@use value (typically a
+    `<div n="">` left behind by a conversion). Such a node yields an empty reference, which
+    dapytains cannot cite, cannot resolve, and which takes down every unit nested under it.
+
+    A node missing the attribute entirely is not reported: dapytains matches on `[@use]`, so
+    it is simply not part of the citation tree (a bare `<lb/>` inside a heading, say), which
+    is legitimate encoding rather than broken data.
+
+    :returns: List of (citeType, positional xpath of the node, human readable reason)
+    """
+    xproc = get_xpath_proc(document.xml, processor=document.xml_processor)
+    returns: List[Tuple[str, str, str]] = []
+
+    match = _join_xpath(base_xpath, _bare_match(structure))
+
+    if structure.use != "position()":
+        for node in xpath_eval(xproc, match):
+            local = get_xpath_proc(node, processor=document.xml_processor)
+            if str(local.evaluate_single(f"string({structure.use})")):
+                continue
+            # Matched on the bare match, so that nodes nested under an uncited one are still
+            # inspected; only an attribute that is present and empty is a defect.
+            if local.effective_boolean_value(f"boolean({structure.use})"):
+                returns.append((
+                    structure.citeType,
+                    _absolute_path(document, node),
+                    f"`{structure.use}` is empty"
+                ))
+
+    for child in structure.children:
+        # Children of a milestone (e.g. <lb/> under <cb/>) are siblings of it, not descendants:
+        # scoping them under their parent's match would match nothing. `milestone` only exists
+        # in newer dapytains releases, hence the getattr.
+        milestone = getattr(structure, "milestone", False)
+        returns.extend(_check_empty_values(document, child, "" if milestone else match))
 
     return returns
 
@@ -327,10 +401,38 @@ class Tester:
                     )
                     working_tree[tree] = s
                     passing[r.filepath] = passing[r.filepath] and s
+
+                # Checked before get_reffs(): an empty value raises there, with no way to tell
+                # which element is at fault.
+                empty_trees = set()
+                for tree in doc.citeStructure:
+                    empty_values = _check_empty_values(doc, doc.citeStructure[tree].structure)
+                    self.results[r.filepath].statuses.append(Log(
+                        f"emptyRefs[Tree={tree}]",
+                        len(empty_values) == 0,
+                        details="" if len(empty_values) == 0 else (
+                            "Matched node(s) cannot be cited, their @use value is unusable: "
+                            + "; ".join([
+                                f"{citeType} at `{path}` ({reason})"
+                                for citeType, path, reason in empty_values
+                            ])
+                        )
+                    ))
+                    if not self.results[r.filepath].statuses[-1].status:
+                        passing[r.filepath] = False
+                        working_tree[tree] = False
+                        empty_trees.add(tree)
+
                 reffs = {}
                 try:
                 # Now check the reference / structure
-                    reffs = {tree: doc.get_reffs(tree) for tree in doc.citeStructure}
+                    # A tree with an empty value cannot be walked (get_reffs raises on it):
+                    # it is already reported above, no need for a second, vaguer failure.
+                    reffs = {
+                        tree: doc.get_reffs(tree)
+                        for tree in doc.citeStructure
+                        if tree not in empty_trees
+                    }
                     self.results[r.filepath].statuses.append(
                         Log(
                             "parse(citeStructures)",
