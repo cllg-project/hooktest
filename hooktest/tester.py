@@ -7,31 +7,11 @@ from typing import Dict, List, Optional, Tuple, Union
 import tqdm
 from dapytains.processor import get_xpath_proc
 from dapytains.metadata.classes import Collection
-from dapytains.tei.citeStructure import CitableUnit, CitableStructure, CiteStructureParser
+from dapytains.tei.citeStructure import CitableUnit, CitableStructure
 from dapytains.tei.document import Document, xpath_eval
 from dapytains.metadata.xml_parser import parse, Catalog
 from lxml import etree as ET
 
-
-# Monkey patch for test
-def _dispatch(self, child_xpath: str, structure: CitableStructure, xpath_processor, unit: CitableUnit, level: int):
-    if len(structure.children) == 1:
-        for element in xpath_eval(xpath_processor, child_xpath):
-            self.find_refs(
-                root=element,
-                structure=structure.children[0],
-                unit=unit,
-                level=level
-            )
-    else:
-        for element in xpath_eval(xpath_processor, child_xpath):
-            self.find_refs_from_branches(
-                root=element,
-                structure=structure.children,
-                unit=unit,
-                level=level
-            )
-CiteStructureParser._dispatch = _dispatch
 
 @dataclasses.dataclass
 class Log:

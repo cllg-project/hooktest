@@ -55,6 +55,40 @@ def test_duplicate_refs(runner):
     assert count_failing(tester.results[get_path("duplicate.xml")]) == 1, "Only one failing test"
 
 
+def test_duplicate_refs_milestone(runner):
+    """Test whether duplicate ref finding works on a milestone tree (pb/lb), where a page's
+    lines are its following siblings rather than its descendants."""
+    result = runner.invoke(cli, ['--no-catalog', '-v', 'verbose', get_path("duplicate_milestone.xml")],
+                           standalone_mode=False)
+    assert '✗' in result.output, "File has a failing test"
+    assert "Tree:default->page(3)->[line(6)]" in result.output, "Lines nested under a page milestone are cited"
+    assert 'duplicateRefs[Tree=default]' in result.output, "Tree Default has duplicate reff"
+    assert "`2`" in result.output, "Page reference `2` is duplicated"
+    assert "`1`" not in result.output, "Page reference `1` is not duplicated"
+
+    tester = Tester()
+    tester.ingest_tei_only([get_path("duplicate_milestone.xml")])
+    tester.tests()
+    assert count_failing(tester.results[get_path("duplicate_milestone.xml")]) == 1, "Only one failing test"
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="A duplicated line inside a single page is not reported yet: dapytains resolves a "
+           "milestone-nested reference to an absolute positional xpath, which matches exactly "
+           "one node, so _check_dbl_refs' xpath re-count never sees the duplicate."
+)
+def test_duplicate_refs_milestone_line(runner):
+    """Test whether duplicate ref finding catches a line duplicated within one page."""
+    result = runner.invoke(cli, ['--no-catalog', '-v', 'verbose', get_path("duplicate_milestone_line.xml")],
+                           standalone_mode=False)
+    assert "Tree:default->page(2)->[line(6)]" in result.output, "Lines nested under a page milestone are cited"
+    assert 'duplicateRefs[Tree=default]' in result.output, "Tree Default has duplicate reff"
+    assert "`1.2`" in result.output, "Line reference `1.2` is duplicated within page 1"
+    assert "`1.1`" not in result.output, "Line reference `1.1` is not duplicated"
+    assert "`2.2`" not in result.output, "Line reference `2.2` is not duplicated across both pages"
+
+
 def test_forbidden_ref(runner):
     """Test with a file expected to fail on forbidden refs."""
     result = runner.invoke(cli, ['--no-catalog', get_path("forbid.xml")], standalone_mode=False)
