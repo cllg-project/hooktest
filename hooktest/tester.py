@@ -7,31 +7,11 @@ from typing import Dict, List, Optional, Tuple, Union
 import tqdm
 from dapytains.processor import get_xpath_proc
 from dapytains.metadata.classes import Collection
-from dapytains.tei.citeStructure import CitableUnit, CitableStructure, CiteStructureParser
+from dapytains.tei.citeStructure import CitableUnit, CitableStructure
 from dapytains.tei.document import Document, xpath_eval
 from dapytains.metadata.xml_parser import parse, Catalog
 from lxml import etree as ET
 
-
-# Monkey patch for test
-def _dispatch(self, child_xpath: str, structure: CitableStructure, xpath_processor, unit: CitableUnit, level: int):
-    if len(structure.children) == 1:
-        for element in xpath_eval(xpath_processor, child_xpath):
-            self.find_refs(
-                root=element,
-                structure=structure.children[0],
-                unit=unit,
-                level=level
-            )
-    else:
-        for element in xpath_eval(xpath_processor, child_xpath):
-            self.find_refs_from_branches(
-                root=element,
-                structure=structure.children,
-                unit=unit,
-                level=level
-            )
-CiteStructureParser._dispatch = _dispatch
 
 @dataclasses.dataclass
 class Log:
@@ -94,6 +74,29 @@ def check_naming_type(struct: CitableStructure) -> Tuple[bool, List[str]]:
     else:
         return False not in [a for a,b in children], [t for a, b in children for t in b]
 
+def _parse_for_check(filepath: str, check_name: str):
+    """ Parse `filepath` for one of the pre-dapytains, lxml-only structural checks.
+
+    :returns: (tree, None) on success, (None, failing Log) when the file cannot be parsed.
+    """
+    try:
+        return ET.parse(filepath), None
+    except Exception as E:
+        return None, Log(
+            check_name, False,
+            details=f"Unable to parse XML to check {check_name} ({type(E).__name__}: {E})"
+        )
+
+
+def _direct_cite_structures(parent) -> List:
+    """ Direct citeStructure children of `parent`, skipping comments and processing
+    instructions (which have no QName and would crash ET.QName). """
+    return [
+        child for child in parent
+        if isinstance(child.tag, str) and ET.QName(child).localname == "citeStructure"
+    ]
+
+
 def check_citestructure_delims(filepath: str) -> Log:
     """ dapytains requires every citeStructure nested within another citeStructure
     to carry a @delim attribute (the top-level citeStructure(s) of a refsDecl do not,
@@ -101,13 +104,9 @@ def check_citestructure_delims(filepath: str) -> Log:
     on a non-top citeStructure crashes dapytains' regex building with a cryptic
     TypeError, so we check for it upfront with a clear message.
     """
-    try:
-        tree = ET.parse(filepath)
-    except Exception as E:
-        return Log(
-            "citeStructure/@delim", False,
-            details=f"Unable to parse XML to check citeStructure/@delim attributes ({type(E).__name__}: {E})"
-        )
+    tree, error = _parse_for_check(filepath, "citeStructure/@delim")
+    if tree is None:
+        return error
 
     missing = []
     # iter() on a tag pattern skips comments and processing instructions, which have no
@@ -126,6 +125,45 @@ def check_citestructure_delims(filepath: str) -> Log:
             f"(unit(s): {', '.join(missing)})"
         ) if not status else None
     )
+
+def check_ignored_citestructure(filepath: str) -> Log:
+    """ dapytains only ever reads the *first* citeStructure of a refsDecl
+    (`./citeStructure[1]`, in CiteStructureParser.__init__) and then recurses through that
+    element's own `./citeStructure` children. Any further citeStructure sitting directly
+    under the refsDecl is silently dropped: no XPath is ever built or evaluated for it, so
+    nothing raises. The citation tree is simply one level shallower than the file looks.
+
+    The usual cause is a self-closed parent -- `<citeStructure ... />` followed by an
+    indented sibling that was meant to be nested inside it. The failure is quiet and easy to
+    miss: top-level references keep resolving, while deeper ones return nothing, because the
+    one surviving unit's regex (`.+`) then swallows the delimiters as part of its own value.
+    """
+    tree, error = _parse_for_check(filepath, "citeStructure/ignored")
+    if tree is None:
+        return error
+
+    ignored = [
+        (extra.get("unit") or "?", extra.get("match") or "?", extra.sourceline)
+        for refs_decl in tree.iter("{*}refsDecl")
+        for extra in _direct_cite_structures(refs_decl)[1:]
+    ]
+
+    status = len(ignored) == 0
+    return Log(
+        "citeStructure/ignored",
+        status,
+        details=(
+            "citeStructure(s) never read by dapytains, which only uses the first "
+            "citeStructure of each refsDecl: "
+            + "; ".join([
+                f"unit `{unit}` (match `{match}`, line {line})"
+                for unit, match, line in ignored
+            ])
+            + ". Nest it inside the preceding citeStructure (which is probably self-closed) "
+              "or move it to its own refsDecl."
+        ) if not status else None
+    )
+
 
 def _get_delim(s: CitableStructure) -> List[str]:
     return ([s.delim] if s.delim else []) + [d for c in s.children for d in _get_delim(c)]
@@ -364,8 +402,9 @@ class Tester:
         for r in resources:
             passing[r.filepath] = True
             delim_log = check_citestructure_delims(r.filepath)
-            self.results[r.filepath] = Result(r.filepath, [delim_log])
-            if not delim_log.status:
+            ignored_log = check_ignored_citestructure(r.filepath)
+            self.results[r.filepath] = Result(r.filepath, [delim_log, ignored_log])
+            if not delim_log.status or not ignored_log.status:
                 passing[r.filepath] = False
 
             if self.resource_schema is not None:
