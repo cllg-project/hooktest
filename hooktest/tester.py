@@ -15,13 +15,17 @@ from lxml import etree as ET
 
 # Monkey patch for test
 def _dispatch(self, child_xpath: str, structure: CitableStructure, xpath_processor, unit: CitableUnit, level: int):
+    # A self-closing unit (<pb/>, <milestone/>) owns the following siblings up to the next one:
+    # dapytains needs its match to bound them, otherwise it looks for children inside the empty element.
+    milestone_match = structure.match if structure.milestone else None
     if len(structure.children) == 1:
         for element in xpath_eval(xpath_processor, child_xpath):
             self.find_refs(
                 root=element,
                 structure=structure.children[0],
                 unit=unit,
-                level=level
+                level=level,
+                milestone_match=milestone_match
             )
     else:
         for element in xpath_eval(xpath_processor, child_xpath):
@@ -29,7 +33,8 @@ def _dispatch(self, child_xpath: str, structure: CitableStructure, xpath_process
                 root=element,
                 structure=structure.children,
                 unit=unit,
-                level=level
+                level=level,
+                milestone_match=milestone_match
             )
 CiteStructureParser._dispatch = _dispatch
 
@@ -295,23 +300,24 @@ def _check_dbl_refs(
         document: Document,
         tree: str
 ) -> List[Tuple[str, str, int]]:
-    """The current system needs to be rerun multiple time, as document.get_refs does not evaluate multiple time the elements"""
-    returns = []
-    def struct_flatten(units: List[CitableUnit]) -> List[Tuple[str, str]]:
-        local_units = [(u.ref, document.citeStructure[tree].generate_xpath(u.ref)) for u in units]
+    """ Duplicates are counted within each list of siblings (the children of one unit), not over the
+    flattened tree: a duplicated parent carries the same children list once per match, which would
+    over-report them. The children of a self-closing unit (<lb/> under <pb/>) have no XPath of their
+    own that matches them all (dapytains returns the position of the first one), so the sibling count
+    is kept when the XPath finds fewer nodes. """
+    returns: Dict[str, Tuple[str, str, int]] = {}
+
+    def walk(units: List[CitableUnit]):
+        for reference, sibling_count in Counter(u.ref for u in units).items():
+            if sibling_count > 1 and reference not in returns:
+                xpath = document.citeStructure[tree].generate_xpath(reference)
+                count = max(sibling_count, len(list(xpath_eval(document.xpath_processor, xpath))))
+                returns[reference] = (xpath, f"`{reference}`", count)
         for u in units:
-            if u.children:
-                local_units.extend(struct_flatten(u.children))
-        return local_units
+            walk(u.children)
 
-    counter = Counter(struct_flatten(document.get_reffs(tree)))
-    for ((reference, xpath), match_count) in counter.items():
-        if match_count > 1:
-            count = len(list(xpath_eval(document.xpath_processor, xpath)))
-            if count > 1:
-                returns.append((xpath, f"`{reference}`", count))
-
-    return returns
+    walk(document.get_reffs(tree))
+    return list(returns.values())
 
 
 class Tester:

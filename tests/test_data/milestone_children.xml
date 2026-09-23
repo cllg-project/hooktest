@@ -1,0 +1,50 @@
+<?xml-model href="http://www.stoa.org/epidoc/schema/latest/tei-epidoc.rng" schematypens="http://relaxng.org/ns/structure/1.0"?>
+<TEI xmlns="http://www.tei-c.org/ns/1.0">
+    <teiHeader>
+        <fileDesc>
+            <titleStmt>
+                <title>Children of self-closing units (pb, milestone)</title>
+            </titleStmt>
+            <publicationStmt>
+                <p>Unpublished</p>
+            </publicationStmt>
+            <sourceDesc>
+                <p>Generated example.</p>
+            </sourceDesc>
+        </fileDesc>
+        <encodingDesc>
+            <refsDecl n="default">
+                <citeStructure match="/TEI/text/body/div" use="@n" unit="chapter">
+                    <citeStructure match=".//milestone[@unit='section']" use="@n" unit="section" delim=".">
+                        <citeStructure match=".//milestone[@unit='item']" use="@n" unit="item" delim=".">
+                            <citeStructure match=".//milestone[@unit='subsection']" use="@n" unit="subsection" delim="."/>
+                        </citeStructure>
+                    </citeStructure>
+                </citeStructure>
+            </refsDecl>
+            <refsDecl n="physical">
+                <citeStructure match="/TEI/text/body//pb" use="@n" unit="page">
+                    <citeStructure match=".//lb" use="@n" unit="line" delim="."/>
+                </citeStructure>
+            </refsDecl>
+        </encodingDesc>
+    </teiHeader>
+    <text>
+        <body>
+            <pb n="10"/>
+            <div n="1">
+                <p><lb n="1"/><milestone unit="section" n="1"/>Chapter one, section one,
+                <lb n="2"/>with an embedded document:</p>
+                <p><lb n="3"/><milestone unit="item" n="1"/><milestone unit="subsection" n="1"/>item one, first part,
+                <lb n="4"/><milestone unit="subsection" n="2"/>item one, second part.</p>
+                <pb n="11"/>
+                <p><lb n="1"/><milestone unit="item" n="2"/>item two, no parts.</p>
+                <p><lb n="2"/><milestone unit="section" n="2"/>Chapter one, section two
+                <lb n="3"/>continues on a line.</p>
+            </div>
+            <div n="2">
+                <p><lb n="4"/><milestone unit="section" n="1"/>Chapter two, section one.</p>
+            </div>
+        </body>
+    </text>
+</TEI>

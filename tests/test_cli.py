@@ -3,7 +3,7 @@ import os.path
 import pytest
 from click.testing import CliRunner
 from hooktest.cli import cli
-from hooktest.tester import Result, Tester
+from hooktest.tester import Document, Result, Tester
 
 
 def get_path(xml: str) -> str:
@@ -192,3 +192,44 @@ def test_empty_ref_value_is_reported(runner):
         "A nested empty value is found even under an element that is itself not cited"
     assert "chapter at `/TEI[1]/text[1]/body[1]/div[3]`" not in details, \
         "An absent attribute is legitimate encoding (that element is simply not cited)"
+
+
+def test_self_closing_units_own_their_children(runner):
+    """ A self-closing unit (<pb/>, <milestone/>) has no descendants: its children are the following
+    matches up to the next unit of the same kind, across <p>/<div> boundaries. They must be found
+    and counted, at every level of nesting. """
+    result = runner.invoke(cli, ['--no-catalog', '-v', 'verbose', get_path("milestone_children.xml")], standalone_mode=False)
+    assert '✗' not in result.output, "File has a failing test"
+    assert "Tree:default->chapter(2)->[section(3)->[item(2)->[subsection(2)]]]" in result.output, \
+        "milestone > milestone > milestone levels are found"
+    assert "Tree:physical->page(2)->[line(8)]" in result.output, "lb are found under their pb"
+    assert count_failing(result.return_value.results[get_path("milestone_children.xml")]) == 0, "Zero failing test"
+
+    doc = Document(get_path("milestone_children.xml"))
+
+    def flatten(units):
+        return [ref for unit in units for ref in [unit.ref, *flatten(unit.children)]]
+
+    assert flatten(doc.get_reffs("physical")) == [
+        "10", "10.1", "10.2", "10.3", "10.4",
+        "11", "11.1", "11.2", "11.3", "11.4"
+    ], "Each lb belongs to the preceding pb only"
+    assert flatten(doc.get_reffs("default")) == [
+        "1", "1.1", "1.1.1", "1.1.1.1", "1.1.1.2", "1.1.2", "1.2",
+        "2", "2.1"
+    ], "Each milestone belongs to the preceding milestone of the parent level only"
+
+
+def test_duplicate_refs_under_self_closing_unit(runner):
+    """ Duplicates among the children of a self-closing unit are reported (same lb twice on a page),
+    while the same @n under two different units is not. """
+    result = runner.invoke(cli, ['--no-catalog', get_path("milestone_children_duplicate.xml")], standalone_mode=False)
+    assert '✗' in result.output, "File has a failing test"
+    assert 'duplicateRefs[Tree=physical]' in result.output, "Tree physical has a duplicate ref"
+    assert "`10.3`" in result.output, "Line 3 is duplicated on page 10"
+    assert "`11.3`" not in result.output, "Line 3 of page 11 is not a duplicate of line 3 of page 10"
+
+    tester = Tester()
+    tester.ingest_tei_only([get_path("milestone_children_duplicate.xml")])
+    tester.tests()
+    assert count_failing(tester.results[get_path("milestone_children_duplicate.xml")]) == 1, "Only one failing test"
