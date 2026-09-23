@@ -113,6 +113,26 @@ def test_missing_delim_on_non_top_citestructure_is_reported(runner):
     assert result.exit_code == 1
 
 
+def test_ignored_citestructure_is_reported(runner):
+    """A second citeStructure directly under a refsDecl is never read by dapytains
+    (it only uses `./citeStructure[1]`), so it must be reported rather than silently
+    producing a citation tree one level shallower than the file declares."""
+    result = runner.invoke(cli, ['--no-catalog', get_path("ignored_citestructure.xml")], standalone_mode=False)
+    assert '✗' in result.output, "File has a failing test"
+    assert 'citeStructure/ignored' in result.output, "Ignored citeStructure is reported under its own test name"
+    assert 'section' in result.output, "The ignored unit name is named in the details"
+    assert isinstance(result.exception, SystemExit), "Failure must end the run gracefully, not crash"
+    assert result.exit_code == 1
+
+
+def test_nested_citestructure_is_not_ignored(runner):
+    """A properly nested citation tree, and sibling refsDecls each holding one
+    citeStructure, must not be flagged as ignored."""
+    for fixture in ("correct_simple.xml", "correct_double_tree.xml"):
+        result = runner.invoke(cli, ['--no-catalog', '-v', 'verbose', get_path(fixture)], standalone_mode=False)
+        assert 'citeStructure/ignored: ✔' in result.output, f"{fixture} must pass the ignored check"
+
+
 def test_malformed_file_does_not_crash_the_whole_run(runner):
     """A catastrophically broken file must be reported as a failing file, and must
     not abort testing of the other files in the batch."""
