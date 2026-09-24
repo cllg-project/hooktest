@@ -1,0 +1,36 @@
+<?xml-model href="http://www.stoa.org/epidoc/schema/latest/tei-epidoc.rng" schematypens="http://relaxng.org/ns/structure/1.0"?>
+<TEI xmlns="http://www.tei-c.org/ns/1.0">
+    <teiHeader>
+        <fileDesc>
+            <titleStmt>
+                <title>Duplicated line within a page (pb/lb)</title>
+            </titleStmt>
+            <publicationStmt>
+                <p>Unpublished</p>
+            </publicationStmt>
+            <sourceDesc>
+                <p>Generated example.</p>
+            </sourceDesc>
+        </fileDesc>
+        <encodingDesc>
+            <refsDecl n="default">
+                <citeStructure match="/TEI/text/body//cb" use="@n" unit="column">
+                    <citeStructure match=".//milestone[@unit='letter']" use="@n" unit="letter" delim="."/>
+                </citeStructure>
+            </refsDecl>
+        </encodingDesc>
+    </teiHeader>
+    <text>
+        <body>
+            <div>
+                <p><cb n="1"/><milestone unit="letter" n="A"/>Column one, A.</p>
+                <p><cb n="2"/><milestone unit="letter" n="A"/>Column two, A.</p>
+                <!-- The text comes back to column 1 twice (e.g. letters printed out of order in the PG):
+                     B only exists under the later occurrences of column 1, never under the first one. -->
+                <p><cb n="1"/><milestone unit="letter" n="B"/>Column one again, B.</p>
+                <p><cb n="3"/><milestone unit="letter" n="A"/>Column three, A.</p>
+                <p><cb n="1"/><milestone unit="letter" n="B"/>Column one a third time, B.</p>
+            </div>
+        </body>
+    </text>
+</TEI>

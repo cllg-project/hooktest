@@ -5,6 +5,7 @@ from collections import Counter
 from typing import Dict, List, Optional, Tuple, Union
 
 import tqdm
+from dapytains.errors import UnresolvableReference
 from dapytains.processor import get_xpath_proc
 from dapytains.metadata.classes import Collection
 from dapytains.tei.citeStructure import CitableUnit, CitableStructure, CiteStructureParser
@@ -296,6 +297,16 @@ def _check_empty_values(
     return returns
 
 
+def _duplicate_xpath(citation_tree, reference: str) -> Optional[str]:
+    """ XPath of a duplicated `reference`, or None when dapytains cannot resolve it: under a
+    milestone parent, resolution follows the first occurrence of each parent, so a child that only
+    exists under a later occurrence (e.g. a PG column the text comes back to) has no node. """
+    try:
+        return citation_tree.generate_xpath(reference)
+    except UnresolvableReference:
+        return None
+
+
 def _check_dbl_refs(
         document: Document,
         tree: str
@@ -310,7 +321,10 @@ def _check_dbl_refs(
     def walk(units: List[CitableUnit]):
         for reference, sibling_count in Counter(u.ref for u in units).items():
             if sibling_count > 1 and reference not in returns:
-                xpath = document.citeStructure[tree].generate_xpath(reference)
+                xpath = _duplicate_xpath(document.citeStructure[tree], reference)
+                if xpath is None:
+                    returns[reference] = ("unresolvable under a repeated milestone", f"`{reference}`", sibling_count)
+                    continue
                 count = max(sibling_count, len(list(xpath_eval(document.xpath_processor, xpath))))
                 returns[reference] = (xpath, f"`{reference}`", count)
         for u in units:
