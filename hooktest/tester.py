@@ -1,4 +1,5 @@
 import dataclasses
+import difflib
 import os.path
 import re
 from collections import Counter
@@ -367,8 +368,44 @@ class Tester:
                 details=f"Unable to validate against schema ({type(E).__name__}: {E}); check the file is well-formed XML"
             )
 
+    @staticmethod
+    def _catalog_hints(filepath: str) -> List[str]:
+        """ RelaxNG reports an unexpected child of a collection/resource as "extra content" on the
+        *following* sibling (e.g. `<extension>` is flagged as an error on `<title>`). Name the real culprit.
+        """
+        allowed = ["parent", "title", "description", "dublinCore", "extensions", "members"]
+        hints = []
+        try:
+            root = ET.parse(filepath).getroot()
+        except Exception:
+            return hints
+        for node in root.iter("collection", "resource"):
+            where = node.get("identifier") or node.get("filepath") or node.tag
+            for child in node:
+                if not isinstance(child.tag, str):
+                    continue
+                if child.tag not in allowed:
+                    close = difflib.get_close_matches(child.tag, allowed, n=1)
+                    hint = f" (did you mean <{close[0]}>?)" if close else ""
+                    hints.append(
+                        f"line {child.sourceline}: unexpected <{child.tag}> in {node.tag} {where}{hint}; "
+                        f"allowed: {', '.join(allowed)}"
+                    )
+            for child in node.findall("dublinCore/*"):
+                if isinstance(child.tag, str) and not child.tag.startswith("{http://purl.org/dc/terms/}"):
+                    hints.append(
+                        f"line {child.sourceline}: <{ET.QName(child).localname}> in <dublinCore> must be in the "
+                        f"http://purl.org/dc/terms/ namespace"
+                    )
+        return hints
+
     def run_catalog_schema(self, filepath) -> Log:
-        return self._validate_against_schema(self.catalog_schema, filepath)
+        log = self._validate_against_schema(self.catalog_schema, filepath)
+        if not log.status:
+            hints = self._catalog_hints(filepath)
+            if hints:
+                log.details = "; ".join(hints) + (f" [RelaxNG: {log.details}]" if log.details else "")
+        return log
 
     def ingest_tei_only(self, files: List[str]) -> int:
         """ Ingest TEI Files as resources (does not require catalogs)
