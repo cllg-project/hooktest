@@ -98,6 +98,7 @@ def cli(files, include_metadata_report: bool, verbosity: str, catalog: bool, pro
         count_resources = tester.ingest_tei_only(files)
         count_collections = 0
 
+    catalog_results = dict(tester.results) if catalog else {}
     if catalog:
         printer.info(f"Found {count_collections} collection(s)")
     printer.info(f"Found {count_resources} resource(s)")
@@ -109,6 +110,8 @@ def cli(files, include_metadata_report: bool, verbosity: str, catalog: bool, pro
         printer.header("Report: Catalog files")
         table = [["File", "Status", "Tests"]]
         for file, result in tester.results.items():
+            if failures_only and result.status:
+                continue
             printer.filter_append(
                 haystack=table,
                 hay=[
@@ -118,7 +121,10 @@ def cli(files, include_metadata_report: bool, verbosity: str, catalog: bool, pro
                 ],
                 level="minimal"
             )
-        click.echo(tabulate.tabulate(table, tablefmt="grid"))
+        if failures_only and len(table) == 1:
+            click.echo("No error to report")
+        else:
+            click.echo(tabulate.tabulate(table, tablefmt="grid"))
 
     #
     #  Metadata
@@ -155,7 +161,10 @@ def cli(files, include_metadata_report: bool, verbosity: str, catalog: bool, pro
                 ],
                 level="minimal"
             )
-    click.echo(tabulate.tabulate(table, tablefmt="grid"))
+    if failures_only and len(table) == 1:
+        click.echo("No error to report")
+    else:
+        click.echo(tabulate.tabulate(table, tablefmt="grid"))
 
     if manifest:
         passing_files = [
@@ -166,6 +175,18 @@ def cli(files, include_metadata_report: bool, verbosity: str, catalog: bool, pro
         with open(manifest, "w") as f:
             f.write("\n".join(passing_files))
         printer.info(f"Wrote {len(passing_files)} passing file(s) to manifest {manifest}")
+
+    printer.header("Summary")
+    rows = []
+    if catalog:
+        rows.append(["Collections found", count_collections])
+        rows.append(["Catalog files tested", len(catalog_results)])
+        rows.append(["Catalog files failed", sum(1 for r in catalog_results.values() if not r.status)])
+    rows.append(["Resources found", count_resources])
+    rows.append(["TEI files tested", len(global_status)])
+    rows.append(["TEI files passed", global_status.count(True)])
+    rows.append(["TEI files failed", global_status.count(False)])
+    click.echo(tabulate.tabulate(rows, tablefmt="simple"))
 
     if False not in global_status:
         click.echo("All tests passed")
